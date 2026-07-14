@@ -1170,12 +1170,24 @@ function serializeContent(){
   cl.querySelectorAll('.hero-photo,.abphoto').forEach(img=>img.setAttribute('src','#PHOTO#'));
   return cl.innerHTML;
 }
-function saveAll(){
+async function saveAll(){
   try{
     localStorage.setItem('ih_content_v5',serializeContent());
-    persistCharts();persistArticles();
-    dirty=false;updateDot();showToast('Tersimpan di browser ini');
-  }catch(e){showToast('Gagal menyimpan: '+e.message);}
+    persistCharts();persistArticles();persistPubs();
+    dirty=false;updateDot();
+  }catch(e){showToast('Gagal menyimpan: '+e.message);return;}
+  // otomatis unggah ke cloud (tanpa perlu klik Publish)
+  const c=cloudCfg();
+  if(!c.url||!c.token){showToast('Tersimpan di browser. Cloud dilewati — token belum diisi (buka menu Cloud sekali untuk sinkron antar-device).');return;}
+  const payload=buildPayload();
+  if(!looksValidContent(payload.content)){showToast('Tersimpan lokal. Cloud dilewati: konten tampak kosong.');return;}
+  showToast('Menyimpan & mengunggah ke cloud…');
+  try{
+    const res=await fetch(c.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:c.token,action:'save',data:payload})});
+    const j=await res.json();
+    if(j&&j.ok){try{localStorage.setItem('ih_local_ts','0');}catch(e){}showToast('Tersimpan & terunggah ke cloud.');}
+    else{showToast('Tersimpan lokal, cloud gagal: '+((j&&j.error)||'token salah')+'.');}
+  }catch(e){showToast('Tersimpan lokal, cloud gagal: '+e.message+'.');}
 }
 function loadSaved(){
   capturePhoto();
@@ -1487,7 +1499,7 @@ async function autoPull(){
     document.getElementById('pageContent').innerHTML=d.content;restorePhotos();
     buildAllCharts();renderArticles();renderPublications();applyIcons();
     persistCharts();persistArticles();persistPubs();
-    try{localStorage.setItem('ih_content_v5',d.content);}catch(e){}
+    try{localStorage.setItem('ih_content_v5',d.content);localStorage.setItem('ih_local_ts','0');}catch(e){}
     if(editing)enableEdit();
   }catch(e){/* offline / gagal → diamkan, tampilkan versi lokal-file */}
 }
